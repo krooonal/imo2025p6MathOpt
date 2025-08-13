@@ -9,6 +9,9 @@ def solve_tiling_problem(N, apply_hints=False):
         for i in range(N):
             model.add_hint(hole_cols[i], i)
     
+    # Symmetry breaking
+    model.Add(hole_cols[0] < hole_cols[N-1])
+    
     tiles_info = []
     total_area = 0
 
@@ -121,7 +124,7 @@ def solve_tiling_problem(N, apply_hints=False):
     else:
         print("No solution found.")
 
-solve_tiling_problem(N=4, apply_hints=True)
+solve_tiling_problem(N=5, apply_hints=True)
         
         
         

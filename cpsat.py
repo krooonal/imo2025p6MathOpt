@@ -124,5 +124,5 @@ def solve_min_tiles(N):
     else:
         print("Solver status UNKNOWN — timeout or internal error.")
 
-# Run it for N = 4
-solve_min_tiles(9)
+# Run it for N
+solve_min_tiles(N=9)
