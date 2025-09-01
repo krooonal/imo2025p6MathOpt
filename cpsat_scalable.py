@@ -125,13 +125,4 @@ def solve_tiling_problem(N, apply_hints=False):
         print("No solution found.")
 
 solve_tiling_problem(N=5, apply_hints=True)
-        
-        
-        
-        
-            
-            
-                    
-                
-
     

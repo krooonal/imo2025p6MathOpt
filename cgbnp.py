@@ -173,25 +173,25 @@ class BaseMasterProblem():
         Solve a full ILP using all columns that have been generated so far in this node's context.
         This is used to obtain an integer feasible solution for a node if its LP solution is fractional.
         """
-        ipsolver = pywraplp.Solver.CreateSolver("highs")
-        ipsolver.SetNumThreads(1)
+        self.ipsolver_ = pywraplp.Solver.CreateSolver("highs")
+        self.ipsolver_.SetNumThreads(1)
         
-        objective = ipsolver.Objective()
+        objective = self.ipsolver_.Objective()
         objective.SetMinimization()
         
         final_tile_vars = {}
         for tile in self.generated_tiles_:
-            final_tile_vars[tile] = ipsolver.BoolVar(f"x[{tile}]")
+            final_tile_vars[tile] = self.ipsolver_.BoolVar(f"x[{tile}]")
             objective.SetCoefficient(final_tile_vars[tile], 1.0)
         
         final_hole_vars = {}
         for r in range(self.N_):
             for c in range(self.N_):
-                final_hole_vars[(r, c)] = ipsolver.BoolVar(f"h[{r},{c}]")
+                final_hole_vars[(r, c)] = self.ipsolver_.BoolVar(f"h[{r},{c}]")
         
         for r in range(self.N_):
             for c in range(self.N_):
-                square_con = ipsolver.Constraint(1.0, 1.0, f"square[{r},{c}]")
+                square_con = self.ipsolver_.Constraint(1.0, 1.0, f"square[{r},{c}]")
                 square_con.SetCoefficient(final_hole_vars[(r, c)], 1.0)
                 for tile in self.generated_tiles_:
                     r1, c1, r2, c2 = tile
@@ -199,12 +199,12 @@ class BaseMasterProblem():
                         square_con.SetCoefficient(final_tile_vars[tile], 1.0)
         
         for i in range(self.N_):
-            row_hole_con = ipsolver.Constraint(1.0, 1.0, f"row_hole[{i}]")
+            row_hole_con = self.ipsolver_.Constraint(1.0, 1.0, f"row_hole[{i}]")
             for j in range(self.N_):
                 row_hole_con.SetCoefficient(final_hole_vars[(i, j)], 1.0)
         
         for j in range(self.N_):
-            col_hole_con = ipsolver.Constraint(1.0, 1.0, f"col_hole[{j}]")
+            col_hole_con = self.ipsolver_.Constraint(1.0, 1.0, f"col_hole[{j}]")
             for i in range(self.N_):
                 col_hole_con.SetCoefficient(final_hole_vars[(i, j)], 1.0)
         
@@ -220,7 +220,9 @@ class BaseMasterProblem():
                     tile_var = final_tile_vars[tile]
                     tile_var.SetBounds(value, value)
         
-        result_status = ipsolver.Solve()
+        self.ipsolver_.set_time_limit(100*1000)
+        result_status = self.ipsolver_.Solve()
+        print(f"ipsolver wall time = {self.ipsolver_.wall_time()}")
         if result_status == pywraplp.Solver.OPTIMAL or result_status == pywraplp.Solver.FEASIBLE:
             return objective.Value(), final_tile_vars, final_hole_vars
         else:
@@ -243,12 +245,13 @@ class Node:
         iteration = 0
         while True:
             iteration += 1
-            if iteration > ITERATION_LIMIT:
-                print("CG iteration limit reached for this node.")
-                break
 
             lp_obj_val, dual_matrix = self.master_problem_.solve_rmp()
             self.lower_bound_ = lp_obj_val
+
+            if iteration > ITERATION_LIMIT:
+                print("CG iteration limit reached for this node.")
+                break
 
             if dual_matrix is None:
                 self.lower_bound_ = float('inf')
@@ -265,16 +268,17 @@ class Node:
         
         # Check if the LP solution is integer feasible
         tile_sol_lp, hole_sol_lp = self.master_problem_.get_solution_values()
-        is_integer_feasible = True
-        for val in tile_sol_lp.values():
-            if abs(val - round(val)) > 1e-6:
-                is_integer_feasible = False
-                break
-        if is_integer_feasible:
-            for val in hole_sol_lp.values():
+        is_integer_feasible = tile_sol_lp is not None
+        if tile_sol_lp is not None:
+            for val in tile_sol_lp.values():
                 if abs(val - round(val)) > 1e-6:
                     is_integer_feasible = False
                     break
+            if is_integer_feasible:
+                for val in hole_sol_lp.values():
+                    if abs(val - round(val)) > 1e-6:
+                        is_integer_feasible = False
+                        break
          
         self.is_integer_feasible_ = is_integer_feasible
         if self.is_integer_feasible_:
@@ -282,13 +286,13 @@ class Node:
             self.tile_solution_ = {t: round(v) for t, v in tile_sol_lp.items()}
             self.hole_solution_ = {h: round(v) for h, v in hole_sol_lp.items()}
         else:
-            if self.depth_ >= 0:
+            if self.depth_ >= 1:
                 return
             milp_obj, milp_tile_vars, milp_hole_vars = self.master_problem_.solve_final_milp()
             if milp_obj < float('inf'):
                 self.integer_objective_ = milp_obj
-                self.tile_solution_ = {t: round(v) for t, v in milp_tile_vars.items()}
-                self.hole_solution_ = {h: round(v) for h, v in milp_hole_vars.items()}
+                self.tile_solution_ = {t: round(v.solution_value()) for t, v in milp_tile_vars.items()}
+                self.hole_solution_ = {h: round(v.solution_value()) for h, v in milp_hole_vars.items()}
 
 class BranchAndPriceSolver:
     def __init__(self, N):
@@ -338,7 +342,8 @@ class BranchAndPriceSolver:
                     self.best_integer_solution_ = current_node.tile_solution_
                     self.best_hole_solution_ = current_node.hole_solution_
                     print(f"*** Updated global upper bound to {self.upper_bound_:.4f} ***")
-                continue
+                if current_node.depth_ > 0:
+                    continue
             
             fractional_var_found = False
             # Prioritize branching on hole variables

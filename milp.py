@@ -107,7 +107,7 @@ def solve_tiling_problem(N: int, solver_type_str: str = "HIGHS"):
     print("=" * 50 + "\n")
 
 if __name__ == "__main__":
-    GRID_SIZE = 4
+    GRID_SIZE = 7
     # Available solvers: "HIGHS", "GSCIP", "GLOP", "CP_SAT"
     SOLVER = "HIGHS"
     solve_tiling_problem(GRID_SIZE, SOLVER)
